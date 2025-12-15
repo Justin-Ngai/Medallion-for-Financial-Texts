@@ -1,17 +1,16 @@
-# Semi-structured data from Financial Modeling Prep
+# Medallion architecture for FMP news articles
 
-This repo is to record the development of a lakehouse on AWS that uses Financial Modeling Prep (FMP) data. The data will be semi-structured, AI agents will enhance it with metadata for other AI applications, and AI agents can answer questions about the articles.
+This repo is to record the development of a medallion architecture on AWS for Financial Modeling Prep (FMP) news articles. 
 
-**Q&A**
+FMP is used because it's also used by credible organizations such as Citadel and Harvard.
 
-**Why FMP?** It’s used by credible organizations such as Citadel and Harvard.
+News articles are used because they're semi-structured data. This is a balance between LLMs being capable of processing unstructured data, and DW methodologies on structured data.
 
-**Why semi-structured data?** This is a balance between LLMs (unlike previous NLP) being better at handling text, and DW methodologies being built primarily on structured data.
-
-**Developments**
-- Built a Lambda function that gets FMP news articles and writes them to an S3 bucket
-- Notebook that puts data into a DataFrame and uses a small language model to add more context
-- Notebook that organizes the DataFrame into a star schema around company events (for signals)
+Files in this repo are:
+- Sample news articles
+- Python file for a lambda function that takes articles from FMP and puts into S3
+- Notebook that stores these in an Apache iceberg format then uses a small language model to add more context
+- Notebook that reorganizes the data into a star schema around company events (for signals)
 
 **To do**
 - Create a Bedrock agent that answers questions Create Bedrock agent that answers questions
