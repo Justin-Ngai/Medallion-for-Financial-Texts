@@ -11,6 +11,7 @@ This repo is to record the development of a lakehouse on AWS that uses Financial
 **Developments**
 - Built a Lambda function that gets FMP news articles and writes them to an S3 bucket
 - Notebook that puts data into a DataFrame and uses a small language model to add more context
+- Notebook that organizes the data into a star schema around company events (for signals)
 
 **To do**
 - Create a Bedrock agent that answers questions Create Bedrock agent that answers questions
