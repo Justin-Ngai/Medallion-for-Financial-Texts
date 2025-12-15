@@ -1,16 +1,8 @@
-# Medallion architecture for FMP news articles
+# Medallion Architecture for Extracting Alpha Signals from Financial News Articles
 
-This repo is to record the development of a medallion architecture on AWS for Financial Modeling Prep (FMP) news articles.
+The purpose of this project is to build a production-ready medallion architecture that extracts alpha signals from Financial Modeling Prep (FMP) news articles. During the development, I learn about:
+- Ingestion best practices using AWS Lambda functions
+- Using AWS SageMaker Lakehouse and data agents, and how this compares to Microsoft Fabric and Databricks (both of which I'm certified for)
+- Financial considerations for designing a semantic layer for alpha signals
 
-FMP is used because it's also used by credible organizations such as Citadel and Harvard.
-
-News articles are used because they're semi-structured data. This is a balance between LLMs being capable of processing unstructured data, and DW methodologies addressing structured data.
-
-The repo has the following files:
-1. Sample news articles
-2. Python file for a lambda function that takes articles from FMP and puts into S3
-3. Notebook that uses a small language model to add more context, then stores the articles in an Apache Iceberg table
-4. Notebook that reorganizes the data into a star schema around company events that possible have alpha signals
-
-To do:
-- Create an agent that answer questions about companies from the gold semantic layer
+Financial Modeling Prep was chosen because it's used by reputable companies, such as Citadel and Harvard. News articles were chosen because they're webpages (aka. semi-structured data), which are harder to standardize on vs tabular data.
