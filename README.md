@@ -9,8 +9,8 @@ This repo is to record the development of a lakehouse on AWS that uses Financial
 **Why semi-structured data?** This is a balance between LLMs (unlike previous NLP) being better at handling text, and DW methodologies being built primarily on structured data.
 
 **Developments**
-	•	Built a Lambda function that gets FMP news articles and writes them to an S3 bucket
-	•	Notebook that puts data into a DataFrame and uses a small language model to add more context
+• Built a Lambda function that gets FMP news articles and writes them to an S3 bucket
+• Notebook that puts data into a DataFrame and uses a small language model to add more context
 
 **To do**
-	•	Create a Bedrock agent that answers questions Create Bedrock agent that answers questions
+• Create a Bedrock agent that answers questions Create Bedrock agent that answers questions
