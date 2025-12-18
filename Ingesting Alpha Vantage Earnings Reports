@@ -1,66 +1,104 @@
 import json
-import urllib3
 import boto3
-import os
+import urllib3
 from datetime import datetime
 
-secrets_client = boto3.client("secretsmanager")
+# Configuration
+SECRET_ARN = "arn:aws:secretsmanager:us-east-1:629904435132:secret:dev/alpha_vantage-wbLVgz"
+S3_BUCKET = "raw-us-east-1-jngai-dev"
+BASE_URL = "https://www.alphavantage.co/query"
+
+# Clients
+http = urllib3.PoolManager()
+s3 = boto3.client("s3")
+secrets = boto3.client("secretsmanager")
 
 def get_api_key():
-    response = secrets_client.get_secret_value(
-        SecretId='arn:aws:secretsmanager:us-east-1:629904435132:secret:dev/alpha_vantage-wbLVgz'
-    )
-    secret = json.loads(response["SecretString"])
-    return secret["FreeApiKey"]
+    res = secrets.get_secret_value(SecretId=SECRET_ARN)
+    return json.loads(res["SecretString"])["FreeApiKey"]
 
-http = urllib3.PoolManager()
+def get_date_params():
+    now = datetime.utcnow()
+    quarter_num = (now.month - 1) // 3 + 1
+    return {
+        "quarter": f"{now.year-1}Q{quarter_num}"
+    }
+
+def parse_tickers(tickers_input):
+    if isinstance(tickers_input, str):
+        tickers_input = tickers_input.replace(",", " ").split()
+    return [t.strip().upper() for t in (tickers_input or []) if str(t).strip()]
+
+def process_ticker(symbol, date_params, api_key):
+    params = {
+        "function": "EARNINGS_CALL_TRANSCRIPT",
+        "symbol": symbol,
+        "quarter": date_params["quarter"],
+        "apikey": api_key
+    }
+
+    try:
+        url = f"{BASE_URL}?" + "&".join(f"{k}={v}" for k, v in params.items())
+        raw_res = http.request("GET", url)
+        data = json.loads(raw_res.data.decode("utf-8"))
+
+        print(url)
+
+        # Check for API-side errors
+        if any(k in data for k in ["Note", "Error Message", "Information"]):
+            return {
+                "symbol": symbol,
+                "status": "error",
+                "message": data.get("Note")
+                or data.get("Error Message")
+                or "Data not available"
+            }
+
+        key = f"earnings_calls/{symbol}/{date_params['quarter']}.json"
+        s3.put_object(
+            Bucket=S3_BUCKET,
+            Key=key,
+            Body=json.dumps(data),
+            ContentType="application/json"
+        )
+
+        return {"symbol": symbol, "status": "success", "s3_key": key}
+
+    except Exception as e:
+        return {"symbol": symbol, "status": "error", "message": str(e)}
 
 def lambda_handler(event, context):
+    # Support both 'tickers' and 'symbol' keys
+    raw_input = event.get("tickers") or event.get("symbol")
+    tickers = parse_tickers(raw_input)
 
-    symbol = event.get("symbol", "IBM") #test this
-    apikey = get_api_key() #apikey = '0O60RCBLDM5ENVSY'
-    url = (
-        "https://www.alphavantage.co/query"
-        "?function=EARNINGS_CALL_TRANSCRIPT"
-        "&symbol=" + symbol + 
-        "&quarter=2024Q1"
-        "&apikey=" + apikey
-    )
+    if not tickers:
+        return {
+            "statusCode": 400,
+            "body": json.dumps({
+                "error": "No tickers provided in 'tickers' or 'symbol' field"
+            })
+        }
 
-    response = http.request("GET", url)
-    data = json.loads(response.data.decode("utf-8"))
+    api_key = get_api_key()
+    date_params = get_date_params()
 
-    return {
-        "statusCode": 200,
-        "body": data
-    }
-    raise Exception('Something went wrong')
+    results = [
+        process_ticker(symbol, date_params, api_key)
+        for symbol in tickers
+    ]
 
-# Initialize S3 and HTTP client outside handler for connection reuse
-s3 = boto3.client('s3')
-
-def (event, context):
-    # 1. Configuration
-    bucket_name = 'raw-us-east-1-jngai-dev' #os.environ.get('S3_BUCKET_NAME')
-    
-    # 3. Save to S3
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    file_name = f"fmp_articles_{timestamp}.json"
-    
-    try:
-        s3.put_object(
-            Bucket=bucket_name,
-            Key=file_name,
-            Body=json.dumps(data),
-            ContentType='application/json'
-        )
-        print(f"Success: Saved to s3://{bucket_name}/{file_name}")
-        
-    except Exception as e:
-        print(f"S3 Upload Exception: {str(e)}")
-        return {'statusCode': 500, 'body': f"Error uploading to S3: {str(e)}"}
+    failed = [r for r in results if r["status"] == "error"]
+    status_code = 200 if not failed else (207 if len(failed) < len(tickers) else 400)
 
     return {
-        'statusCode': 200,
-        'body': json.dumps(f"Saved {len(data)} articles to {file_name}")
+        "statusCode": status_code,
+        "body": json.dumps({
+            "quarter": date_params["quarter"],
+            "summary": {
+                "total": len(tickers),
+                "failed": len(failed)
+            },
+            "results": results
+        })
     }
