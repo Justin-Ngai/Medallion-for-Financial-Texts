@@ -1,7 +1,6 @@
 import json
 import boto3
 import urllib3
-from datetime import datetime
 
 # Configuration
 SECRET_ARN = "arn:aws:secretsmanager:us-east-1:629904435132:secret:dev/alpha_vantage-wbLVgz"
@@ -13,48 +12,50 @@ http = urllib3.PoolManager()
 s3 = boto3.client("s3")
 secrets = boto3.client("secretsmanager")
 
-def get_api_key():
+def lambda_handler(event, context):
+    # 1. Get input parameters
+    # Expects event to have: {"symbol": "AAPL", "year_quarter": "2024Q1"}
+    symbol = event.get("symbol", "").upper()
+    year_quarter = event.get("year_quarter", "")
+
+    if not symbol or not year_quarter:
+        return {
+            "statusCode": 400,
+            "body": json.dumps({"error": "Provide 'symbol' and 'year_quarter' (e.g. 2024Q1)"})
+        }
+
+    # 2. Extract Year and Quarter from the string (e.g., "2024Q1" -> year="2024", quarter="Q1")
+    year = year_quarter[:4]
+    quarter = year_quarter[4:]
+
+    # 3. Get API Key from Secrets Manager
     res = secrets.get_secret_value(SecretId=SECRET_ARN)
-    return json.loads(res["SecretString"])["FreeApiKey"]
+    api_key = json.loads(res["SecretString"])["FreeApiKey"]
 
-def get_date_params():
-    now = datetime.utcnow()
-    quarter_num = (now.month - 1) // 3 + 1
-    return {
-        "quarter": f"{now.year-1}Q{quarter_num}"
-    }
-
-def parse_tickers(tickers_input):
-    if isinstance(tickers_input, str):
-        tickers_input = tickers_input.replace(",", " ").split()
-    return [t.strip().upper() for t in (tickers_input or []) if str(t).strip()]
-
-def process_ticker(symbol, date_params, api_key):
+    # 4. Request data from Alpha Vantage
     params = {
         "function": "EARNINGS_CALL_TRANSCRIPT",
         "symbol": symbol,
-        "quarter": date_params["quarter"],
+        "year": year,
+        "quarter": quarter,
         "apikey": api_key
     }
-
+    
+    url = f"{BASE_URL}?" + "&".join(f"{k}={v}" for k, v in params.items())
+    
     try:
-        url = f"{BASE_URL}?" + "&".join(f"{k}={v}" for k, v in params.items())
         raw_res = http.request("GET", url)
         data = json.loads(raw_res.data.decode("utf-8"))
 
-        print(url)
-
-        # Check for API-side errors
+        # Check for API-side errors (Rate limits or missing data)
         if any(k in data for k in ["Note", "Error Message", "Information"]):
             return {
-                "symbol": symbol,
-                "status": "error",
-                "message": data.get("Note")
-                or data.get("Error Message")
-                or "Data not available"
+                "statusCode": 400,
+                "body": json.dumps({"error": "API Error", "details": data})
             }
 
-        key = f"earnings_calls/{symbol}/{date_params['quarter']}.json"
+        # 5. Save the file to S3
+        key = f"earnings_calls/{symbol}/{year_quarter}.json"
         s3.put_object(
             Bucket=S3_BUCKET,
             Key=key,
@@ -62,43 +63,17 @@ def process_ticker(symbol, date_params, api_key):
             ContentType="application/json"
         )
 
-        return {"symbol": symbol, "status": "success", "s3_key": key}
-
-    except Exception as e:
-        return {"symbol": symbol, "status": "error", "message": str(e)}
-
-def lambda_handler(event, context):
-    # Support both 'tickers' and 'symbol' keys
-    raw_input = event.get("tickers") or event.get("symbol")
-    tickers = parse_tickers(raw_input)
-
-    if not tickers:
         return {
-            "statusCode": 400,
+            "statusCode": 200,
             "body": json.dumps({
-                "error": "No tickers provided in 'tickers' or 'symbol' field"
+                "message": "File saved successfully",
+                "symbol": symbol,
+                "s3_key": key
             })
         }
 
-    api_key = get_api_key()
-    date_params = get_date_params()
-
-    results = [
-        process_ticker(symbol, date_params, api_key)
-        for symbol in tickers
-    ]
-
-    failed = [r for r in results if r["status"] == "error"]
-    status_code = 200 if not failed else (207 if len(failed) < len(tickers) else 400)
-
-    return {
-        "statusCode": status_code,
-        "body": json.dumps({
-            "quarter": date_params["quarter"],
-            "summary": {
-                "total": len(tickers),
-                "failed": len(failed)
-            },
-            "results": results
-        })
-    }
+    except Exception as e:
+        return {
+            "statusCode": 500,
+            "body": json.dumps({"error": str(e)})
+        }
