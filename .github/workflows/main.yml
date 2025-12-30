@@ -35,4 +35,4 @@ jobs:
 
       - name: Deploy SAM application
         run: |
-          sam deploy --no-confirm-changeset --no-fail-on-empty-changeset --stack-name medallion-financial-texts-stack --resolve-s3
+          sam deploy --no-confirm-changeset --no-fail-on-empty-changeset --stack-name medallion-financial-texts-stack --resolve-s3 --capabilities CAPABILITY_IAM
