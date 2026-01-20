@@ -55,7 +55,7 @@ def lambda_handler(event, context):
             }
 
         # Save to S3
-        key = f"earnings_calls/{symbol}/{year_quarter}.json"
+        key = f"earnings_call_transcripts/{symbol}/{year_quarter}.json"
         s3.put_object(
             Bucket=S3_BUCKET,
             Key=key,
